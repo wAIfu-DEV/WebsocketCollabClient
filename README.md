@@ -22,12 +22,12 @@ New languages can easily be added in the future.
 
 ## Usage
 
-#### Those are only examples making use of the functions provided by the library. Your implementation will and should be specific to the architecture of the AI Vtuber.
+#### Those are only examples making use of some of the functions provided by the library. Your implementation will and should be specific to the architecture of the AI Vtuber.
 
 Python:
 
 ```python
-from lib.wcc import WebsocketCollabClient, ProtocolMessage, ProtocolMessageUnknown
+from lib.wcc import WebsocketCollabClient, ProtocolMessage
 
 WS_URL = "<url>"
 USER = "<user>"
@@ -64,8 +64,8 @@ async function main() {
   let client = new WebsocketCollabClient();
   await client.connect(WS_URL, CHANNEL_ID, { user: USER, pass: PASS });
 
-  client.onTextMessage = (sender, content, raw) => {
-    console.log("RAW:", msg.to_dict());
+  client.onTextMessage = (sender, content, json) => {
+    console.log("RAW:", json);
     console.log(`From: '${sender}' Message: '${content}'`);
   };
 
@@ -88,11 +88,10 @@ const string CHANNEL_ID = "<channel id>";
 WebsocketCollabClient wcc = new WebsocketCollabClient();
 await wcc.Connect(WS_URL, CHANNEL_ID, USER, PASS);
 
-wcc.OnTextMessage(async (ProtocolMessage message) =>
+wcc.OnTextMessage += (s, msg) =>
 {
-    Console.WriteLine($"RAW: {message}");
-    Console.WriteLine($"From: '{message.payload.name}' Message: '{message.payload.content}'");
-});
+    Console.WriteLine($"From: '{msg.Payload.Name}' Message: '{msg.Payload.Content}'");
+};
 
 await wcc.SendText("Hilda", "This is a test message", ["all"]);
 
