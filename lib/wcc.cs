@@ -482,7 +482,7 @@ namespace WebsocketCollab
                 { "name", data_name },
                 { "content", data },
             };
-            await Send("message", payload, to);
+            await Send("data", payload, to);
         }
 
         /// <summary>
