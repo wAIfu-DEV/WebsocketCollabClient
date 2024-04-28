@@ -7,17 +7,12 @@ const string CHANNEL_ID = "<channel id>";
 
 WebsocketCollabClient wcc = new WebsocketCollabClient();
 await wcc.Connect(WS_URL, CHANNEL_ID, USER, PASS);
-
-wcc.OnAllMessages(async (ProtocolMessageUnknown message) =>
+wcc.All += (s, e) => Console.WriteLine($"RAW: {e.Payload.Content}");
+wcc.Text += (s, e) =>
 {
-    Console.WriteLine($"RAW: {message}");
-});
+    Console.WriteLine($"From: '{e.Payload.Name}' Message: '{e.Payload.Content}'");
+};
 
-wcc.OnTextMessage(async (ProtocolMessage message) =>
-{
-    Console.WriteLine($"STR: {message}");
-    Console.WriteLine($"From: '{message.payload.name}' Message: '{message.payload.content}'");
-});
 
 await wcc.SendText("Hilda", "This is a test message", ["all"]);
 
