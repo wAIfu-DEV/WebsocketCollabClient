@@ -109,9 +109,9 @@ while (true) { };
 ```json
 {
   "version": 1,
-  "type": "message" | "data",
+  "type": "message" /* "message" | "data" */,
   "from": "<user>",
-  "to": ["all" | "<user>", ...],
+  "to": ["all"] /* ["all"] | ["<user>", ...] */,
   "payload": {
     "name": "Hilda",
     "data": "This is a test message."
