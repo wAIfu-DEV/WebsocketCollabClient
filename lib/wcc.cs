@@ -1,138 +1,47 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.WebSockets;
+﻿using System.Net.WebSockets;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading.Tasks;
 
 namespace WebsocketCollab
 {
-    /// <summary>
-    /// Protocol-compliant message format.
-    /// </summary>
-    struct ProtocolMessageUnknown
+    public class ProtocolMessage
     {
-        /// <summary>
-        /// Message as json string, this is not part of the message.
-        /// </summary>
-        public string jsonString;
-
-        /// <summary>
-        /// Protocol version of the message.
-        /// </summary>
-        public int version;
+        [JsonPropertyName("version")]
+        public int Version { get; set; } = 1;
 
         /// <summary>
         /// Type of message, usually "message" or "data", but can also be any other non protocol-compliant string.
         /// </summary>
-        public string type;
+        [JsonPropertyName("type")]
+        public string Type { get; set; }
 
         /// <summary>
         /// Username of the message sender, this is not the name of the AI vtuber.
         /// </summary>
-        public string from;
+        [JsonPropertyName("from")]
+        public string From { get; set; }
 
-        /// <summary>
-        /// Array of usernames to send the message to. If contains the string "all", then every participants should receive the message.
-        /// </summary>
-        public string[] to;
+        [JsonPropertyName("to")]
+        public List<string> To { get; set; }
 
-        /// <summary>
-        /// JSON payload in the form of a Dictionary. Further parsing is required to safely use.
-        /// </summary>
-        public Dictionary<string, object> payload;
-
-        public Dictionary<string, object> ToDictionary()
-        {
-            return new Dictionary<string, object>()
-            {
-                { "version", version },
-                { "type", type },
-                { "from", from },
-                { "to", to },
-                { "payload", payload },
-            };
-        }
-
-        public override string ToString()
-        {
-            return jsonString;
-        }
+        [JsonPropertyName("payload")]
+        public Payload Payload { get; set; }
     }
 
-    struct Payload
+    public class Payload
     {
         /// <summary>
         /// Name of the AI Vtuber that sent the message, or label of the data depending on message type.
         /// </summary>
-        public string name;
+        [JsonPropertyName("name")]
+        public string Name { get; set; }
 
         /// <summary>
         /// Content of the message, or data depending on message type.
         /// </summary>
-        public string content;
-
-        public Dictionary<string, object> ToDictionary()
-        {
-            return new Dictionary<string, object>()
-            {
-                { "name", name },
-                { "content", content },
-            };
-        }
-    }
-
-    struct ProtocolMessage
-    {
-        /// <summary>
-        /// Message as json string, this is not part of the message.
-        /// </summary>
-        public string jsonString;
-
-        /// <summary>
-        /// Protocol version of the message.
-        /// </summary>
-        public int version;
-
-        /// <summary>
-        /// Type of message, usually "message" or "data", but can also be any other non protocol-compliant string.
-        /// </summary>
-        public string type;
-
-        /// <summary>
-        /// Username of the message sender, this is not the name of the AI vtuber.
-        /// </summary>
-        public string from;
-
-        /// <summary>
-        /// Array of usernames to send the message to. If contains the string "all", then every participants should receive the message.
-        /// </summary>
-        public string[] to;
-
-        /// <summary>
-        /// Content of the message, with a name and content field.
-        /// </summary>
-        public Payload payload;
-
-        public Dictionary<string, object> ToDictionary()
-        {
-            return new Dictionary<string, object>()
-            {
-                { "version", version },
-                { "type", type },
-                { "from", from },
-                { "to", to },
-                { "payload", payload.ToDictionary() },
-            };
-        }
-
-        public override string ToString()
-        {
-            return jsonString;
-        }
+        [JsonPropertyName("content")]
+        public string Content { get; set; }
     }
 
     /// <summary>
@@ -162,14 +71,12 @@ namespace WebsocketCollab
 
         private string User = string.Empty;
         private ClientWebSocket? Socket = null;
-        private Thread? ListenerThread = null;
         private bool ShouldCloseListenerThread = false;
+        private Task? task;
 
-        private List<Func<ProtocolMessageUnknown, Task>> ListenersAll = [];
-        private List<Func<ProtocolMessage, Task>> ListenersText = [];
-        private List<Func<ProtocolMessage, Task>> ListenersData = [];
-        private List<Func<ProtocolMessageUnknown, Task>> ListenersOther = [];
-        private List<Func<string, Task>> ListenersNonProtocol = [];
+        public EventHandler<ProtocolMessage> All { get; set; }
+        public EventHandler<ProtocolMessage> Text { get; set; }
+        public EventHandler<ProtocolMessage> Data { get; set; }
 
         private async Task ConnectWebsocket(Uri uri, string username, string password)
         {
@@ -206,43 +113,15 @@ namespace WebsocketCollab
         private Uri CreateUri(string url, string channel_id, string user, string password)
         {
             Uri uri = new Uri(url);
-            string reconstructed_url = "";
-
-            try
+            string reconstructed_url = $"{uri.Scheme}://{user}:{password}@{uri.Host}"; 
+            if (uri.Port != 80)
             {
-                string scheme = uri.Scheme;
-                reconstructed_url += scheme + "://";
+                reconstructed_url += ":" + uri.Port.ToString();
             }
-            catch { }
-
-            reconstructed_url += $"{user}:{password}@";
-
-            try
-            {
-                string host = uri.Host;
-                reconstructed_url += host;
-            }
-            catch { }
-
-            try
-            {
-                int port = uri.Port;
-                if (port != 80)
-                {
-                    reconstructed_url += ":" + port.ToString();
-                }
-            }
-            catch { }
 
             reconstructed_url += $"/{channel_id}";
 
             return new Uri(reconstructed_url);
-        }
-
-        private async Task CallListeners<T>(List<Func<T, Task>> listeners, T arg)
-        {
-            foreach (var listener in listeners)
-                await listener(arg);
         }
 
         private async Task Listener()
@@ -259,118 +138,32 @@ namespace WebsocketCollab
                     continue;
                 }
 
-                using (JsonDocument json = JsonDocument.Parse(received))
+                var data = JsonSerializer.Deserialize<ProtocolMessage>(received);
+
+                All?.Invoke(this, data);
+
+                if (!(data.To.Contains("all") || data.To.Contains(User)))
                 {
-                    JsonElement root = json.RootElement;
+                    continue;
+                };
 
-                    JsonElement versionElement = root.GetProperty("version");
-                    JsonElement typeElement = root.GetProperty("type");
-                    JsonElement fromElement = root.GetProperty("from");
-                    JsonElement toElement = root.GetProperty("to");
-                    JsonElement payloadElement = root.GetProperty("payload");
+                if (data.From == User)
+                {
+                    continue;
+                };
 
-                    if (
-                        versionElement.ValueKind != JsonValueKind.Number ||
-                        typeElement.ValueKind != JsonValueKind.String ||
-                        fromElement.ValueKind != JsonValueKind.String ||
-                        toElement.ValueKind != JsonValueKind.Array ||
-                        payloadElement.ValueKind != JsonValueKind.Object
-                    )
-                    {
-                        await CallListeners(ListenersNonProtocol, received);
-                        continue;
-                    }
-
-                    int versionInt = JsonSerializer.Deserialize<int>(versionElement.GetRawText());
-                    string? typeString = JsonSerializer.Deserialize<string>(typeElement.GetRawText());
-                    string? fromString = JsonSerializer.Deserialize<string>(fromElement.GetRawText());
-                    string[]? toArr = JsonSerializer.Deserialize<string[]>(toElement.GetRawText());
-                    Dictionary<string, object>? payloadDict = JsonSerializer.Deserialize<Dictionary<string, object>>(payloadElement.GetRawText());
-
-                    if (typeString == null || fromString == null || toArr == null || payloadDict == null)
-                    {
-                        await CallListeners(ListenersNonProtocol, received);
-                        continue;
-                    }
-
-                    ProtocolMessageUnknown protoMessageUnknown = new ProtocolMessageUnknown()
-                    {
-                        jsonString = received,
-                        version = versionInt,
-                        type = typeString,
-                        from = fromString,
-                        to = toArr,
-                        payload = payloadDict,
-                    };
-
-                    await CallListeners(ListenersAll, protoMessageUnknown);
-
-                    if (!(toArr.Contains("all") || toArr.Contains(User)))
-                    {
-                        continue;
-                    };
-
-                    if (fromString == User)
-                    {
-                        continue;
-                    };
-
-                    if (!(typeString == "message" || typeString == "data"))
-                    {
-                        await CallListeners(ListenersOther, protoMessageUnknown);
-                        continue;
-                    }
-                    else
-                    {
-                        Payload payload;
-                        try
-                        {
-                            object? nameString = payloadDict.GetValueOrDefault("name");
-                            object? contentString = payloadDict.GetValueOrDefault("name");
-                            if (nameString == null || contentString == null) throw new Exception();
-                            if (nameString.GetType() != typeof(string) || contentString.GetType() != typeof(string)) throw new Exception();
-
-                            payload = new Payload()
-                            {
-                                name = (string)nameString,
-                                content = (string)contentString
-                            };
-                        }
-                        catch
-                        {
-                            await CallListeners(ListenersOther, protoMessageUnknown);
-                            continue;
-                        }
-
-                        ProtocolMessage protoMessage = new ProtocolMessage()
-                        {
-                            jsonString = received,
-                            version = versionInt,
-                            type = typeString,
-                            from = fromString,
-                            to = toArr,
-                            payload = payload,
-                        };
-
-                        await CallListeners((typeString == "message") ? ListenersText : ListenersData, protoMessage);
-                        continue;
-                    }
+                switch (data.Type)
+                {
+                    case "message":
+                        Text?.Invoke(this, data);
+                        break;
+                    case "data":
+                        Data?.Invoke(this, data);
+                        break;
+                    default:
+                        break;
                 }
             }
-        }
-
-        private void ListenerThreadLoader()
-        {
-            Task task = Task.Run(Listener);
-            task.Wait();
-        }
-
-        private void StartListenerThread()
-        {
-            ListenerThread = new Thread(new ThreadStart(ListenerThreadLoader));
-            ListenerThread.Priority = ThreadPriority.BelowNormal;
-            ListenerThread.IsBackground = true;
-            ListenerThread.Start();
         }
 
         private void ClearServerData()
@@ -397,7 +190,9 @@ namespace WebsocketCollab
 
             await ConnectWebsocket(ServerUrl, user, password);
             ShouldCloseListenerThread = false;
-            StartListenerThread();
+
+            // start watcher task
+            task = Task.Run(Listener);
         }
 
         /// <summary>
@@ -409,10 +204,6 @@ namespace WebsocketCollab
             ClearServerData();
             if (Socket == null) return;
             ShouldCloseListenerThread = true;
-            if (ListenerThread != null)
-            {
-                ListenerThread.Join();
-            }
             await Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
         }
 
@@ -425,23 +216,20 @@ namespace WebsocketCollab
         /// <param name="payload">Payload to send alongside the message, make sure to represent the nested JSON objects as Dictionary(string, object)</param>
         /// <param name="to">Array of collab participants to send the message to. Will send to everyone if contains the string "all"</param>
         /// <returns></returns>
-        public async Task Send(string msg_type, Dictionary<string, object> payload, string[]? to = null)
+        public async Task Send(string msg_type, Payload payload, string[]? to = null)
         {
             if (to == null)
-            {
                 to = ["all"];
-            }
 
-            Dictionary<string, object> proto = new Dictionary<string, object>()
+            var msg = new ProtocolMessage()
             {
-                { "version", 1 },
-                { "type", msg_type },
-                { "from", User },
-                { "to", to },
-                { "payload", payload }
+                Version = 1,
+                Type = msg_type,
+                From = User,
+                To = to?.ToList(),
+                Payload = payload
             };
-
-            string json = JsonSerializer.Serialize(proto);
+            string json = JsonSerializer.Serialize(msg);
             await SendString(Socket!, json);
         }
 
@@ -456,10 +244,10 @@ namespace WebsocketCollab
         /// <returns></returns>
         public async Task SendText(string sender, string content, string[]? to = null)
         {
-            Dictionary<string, object> payload = new Dictionary<string, object>()
+            var payload = new Payload()
             {
-                { "name", sender },
-                { "content", content },
+                Name = sender,
+                Content = content,
             };
             await Send("message", payload, to);
         }
@@ -476,97 +264,13 @@ namespace WebsocketCollab
         /// <param name="to"></param>
         /// <returns></returns>
         public async Task SendData(string data_name, string data, string[]? to = null)
-        {
-            Dictionary<string, object> payload = new Dictionary<string, object>()
+        {            
+            var payload = new Payload()
             {
-                { "name", data_name },
-                { "content", data },
+                Name = data_name,
+                Content = data,
             };
             await Send("data", payload, to);
-        }
-
-        /// <summary>
-        /// Sends a non protocol-compliant json string.
-        /// <br/>
-        /// Do not use unless you know what you are doing, better protocol-compliant alternatives are <c>SendData()</c> and <c>Send()</c>.
-        /// </summary>
-        /// <param name="obj">JSON message to send, make sure to represent the nested JSON objects as Dictionary(string, object)</param>
-        /// <returns></returns>
-        public async Task SendNonProtocolJson(Dictionary<string, object> obj)
-        {
-            string json = JsonSerializer.Serialize(obj);
-            await SendString(Socket!, json);
-        }
-
-        /// <summary>
-        /// Adds an event listener for when the client receives a protocol-compliant message.
-        /// <br/>
-        /// Note that the message could be destined to another participant, or be from the user themselves.
-        /// <br/>
-        /// To only listen for incoming messages that you are the recipent of, use <c>OnTextMessage()</c> and <c>OnDataMessage()</c>
-        /// </summary>
-        /// <param name="listener">Async callback function</param>
-        public void OnAllMessages(Func<ProtocolMessageUnknown, Task> listener)
-        {
-            ListenersAll.Add(listener);
-        }
-
-        /// <summary>
-        /// Adds an event listener for when a text message is sent to you.
-        /// <br/>
-        /// The assumption is that you should respond to the incoming message.
-        /// <br/>
-        /// <c>message.payload.name</c> contains the name of the sender,
-        /// <c>message.payload.content</c> contains the content of the message.
-        /// </summary>
-        /// <param name="listener">Async callback function</param>
-        public void OnTextMessage(Func<ProtocolMessage, Task> listener)
-        {
-            ListenersText.Add(listener);
-        }
-
-        /// <summary>
-        /// Adds an event listener for when a data message is sent to you.
-        /// <br/>
-        /// The assumption is that you should not respond to the incoming message.
-        /// <br/>
-        /// <c>message.payload.name</c> contains the label of the data,
-        /// <c>message.payload.content</c> contains the data.
-        /// </summary>
-        /// <param name="listener">Async callback function</param>
-        public void OnDataMessage(Func<ProtocolMessage, Task> listener)
-        {
-            ListenersData.Add(listener);
-        }
-
-        /// <summary>
-        /// Adds an event listener for when a message with unknown type or non protocol-compliant payload is sent to you.
-        /// </summary>
-        /// <param name="listener">Async callback function</param>
-        public void OnOtherMessage(Func<ProtocolMessageUnknown, Task> listener)
-        {
-            ListenersOther.Add(listener);
-        }
-
-        /// <summary>
-        /// Adds an event listener for when a non protocol-compliant message is received.
-        /// </summary>
-        /// <param name="listener">Async callback function</param>
-        public void OnNonProtocolMessage(Func<string, Task> listener)
-        {
-            ListenersNonProtocol.Add(listener);
-        }
-
-        /// <summary>
-        /// Removes all listeners added via <c>OnSomething()</c> functions.
-        /// </summary>
-        public void RemoveAllListeners()
-        {
-            ListenersAll.Clear();
-            ListenersText.Clear();
-            ListenersData.Clear();
-            ListenersOther.Clear();
-            ListenersNonProtocol.Clear();
-        }
+        }    
     }
 }
