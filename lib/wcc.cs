@@ -315,7 +315,12 @@ namespace WebsocketCollab
                         continue;
                     };
 
-                    if (typeString == "message" || typeString == "data")
+                    if (!(typeString == "message" || typeString == "data"))
+                    {
+                        await CallListeners(ListenersOther, protoMessageUnknown);
+                        continue;
+                    }
+                    else
                     {
                         Payload payload;
                         try
@@ -347,20 +352,7 @@ namespace WebsocketCollab
                             payload = payload,
                         };
 
-                        if (typeString == "message")
-                        {
-                            await CallListeners(ListenersText, protoMessage);
-                            continue;
-                        }
-                        else if (typeString == "data")
-                        {
-                            await CallListeners(ListenersData, protoMessage);
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        await CallListeners(ListenersOther, protoMessageUnknown);
+                        await CallListeners((typeString == "message") ? ListenersText : ListenersData, protoMessage);
                         continue;
                     }
                 }
