@@ -1,4 +1,4 @@
-from lib.wcc import WebsocketCollabClient, ProtocolMessage, ProtocolMessageUnknown
+from lib.wcc import WebsocketCollabClient, ProtocolMessage
 
 WS_URL = "<url>"
 USER = "<user>"
@@ -12,7 +12,7 @@ client.connect(
     user=USER,
     password=PASS)
 
-def listener_all(msg: ProtocolMessageUnknown):
+def listener_all(msg: ProtocolMessage):
     print("RAW:", msg.to_dict())
 
 def listener_text(msg: ProtocolMessage):

@@ -71,12 +71,12 @@ namespace WebsocketCollab
 
         private string User = string.Empty;
         private ClientWebSocket? Socket = null;
-        private bool ShouldCloseListenerThread = false;
-        private Task? task;
+        private bool ShouldExitWatcher = false;
+        private Task? WatcherTask = null;
 
-        public EventHandler<ProtocolMessage> All { get; set; }
-        public EventHandler<ProtocolMessage> Text { get; set; }
-        public EventHandler<ProtocolMessage> Data { get; set; }
+        public EventHandler<ProtocolMessage> OnAllMessages { get; set; }
+        public EventHandler<ProtocolMessage> OnTextMessage { get; set; }
+        public EventHandler<ProtocolMessage> OnDataMessage { get; set; }
 
         private async Task ConnectWebsocket(Uri uri, string username, string password)
         {
@@ -113,7 +113,7 @@ namespace WebsocketCollab
         private Uri CreateUri(string url, string channel_id, string user, string password)
         {
             Uri uri = new Uri(url);
-            string reconstructed_url = $"{uri.Scheme}://{user}:{password}@{uri.Host}"; 
+            string reconstructed_url = $"{uri.Scheme}://{user}:{password}@{uri.Host}";
             if (uri.Port != 80)
             {
                 reconstructed_url += ":" + uri.Port.ToString();
@@ -124,9 +124,9 @@ namespace WebsocketCollab
             return new Uri(reconstructed_url);
         }
 
-        private async Task Listener()
+        private async Task Watcher()
         {
-            while (!ShouldCloseListenerThread)
+            while (!ShouldExitWatcher)
             {
                 string received;
                 try
@@ -140,7 +140,7 @@ namespace WebsocketCollab
 
                 var data = JsonSerializer.Deserialize<ProtocolMessage>(received);
 
-                All?.Invoke(this, data);
+                OnAllMessages?.Invoke(this, data);
 
                 if (!(data.To.Contains("all") || data.To.Contains(User)))
                 {
@@ -155,12 +155,10 @@ namespace WebsocketCollab
                 switch (data.Type)
                 {
                     case "message":
-                        Text?.Invoke(this, data);
+                        OnTextMessage?.Invoke(this, data);
                         break;
                     case "data":
-                        Data?.Invoke(this, data);
-                        break;
-                    default:
+                        OnDataMessage?.Invoke(this, data);
                         break;
                 }
             }
@@ -189,10 +187,9 @@ namespace WebsocketCollab
             ServerUrl = CreateUri(url, channel_id, user, password); ;
 
             await ConnectWebsocket(ServerUrl, user, password);
-            ShouldCloseListenerThread = false;
 
-            // start watcher task
-            task = Task.Run(Listener);
+            ShouldExitWatcher = false;
+            WatcherTask = Task.Run(Watcher);
         }
 
         /// <summary>
@@ -202,8 +199,8 @@ namespace WebsocketCollab
         public async Task Disconnect()
         {
             ClearServerData();
+            ShouldExitWatcher = true;
             if (Socket == null) return;
-            ShouldCloseListenerThread = true;
             await Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
         }
 
@@ -264,13 +261,13 @@ namespace WebsocketCollab
         /// <param name="to"></param>
         /// <returns></returns>
         public async Task SendData(string data_name, string data, string[]? to = null)
-        {            
+        {
             var payload = new Payload()
             {
                 Name = data_name,
                 Content = data,
             };
             await Send("data", payload, to);
-        }    
+        }
     }
 }

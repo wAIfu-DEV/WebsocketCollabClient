@@ -75,21 +75,36 @@ class ProtocolMessage:
 
 
 class WebsocketCollabClient:
+
     PROTOCOL_VERSION: int = 1
+    """
+    Version of the protocol used for the communication from client to client.
+    """
+
     connected: bool = False
+    """
+    If the client is currently connected to the websocket server.
+    """
+
     channel_id: str = ""
+    """
+    ID of the channel the client is currently connected to.
+    """
+
     server_url: str = ""
+    """
+    URL of the server the client is currently connected to.
+    """
 
     __user: str = ""
     __socket: websockets.sync.client.ClientConnection | None = None
     __thread: threading.Thread | None = None
     __should_close_thread: bool = False
 
-    __listeners_all_msg: list[Callable[[ProtocolMessageUnknown], None]] = []
+    __listeners_all_msg: list[Callable[[ProtocolMessage], None]] = []
     __listeners_text_msg: list[Callable[[ProtocolMessage], None]] = []
     __listeners_data_msg: list[Callable[[ProtocolMessage], None]] = []
-    __listeners_other_msg: list[Callable[[ProtocolMessageUnknown], None]] = []
-    __listeners_non_proto_msg: list[Callable[[str], None]] = []
+
 
     def __connect_websocket(self, url: str)-> None:
         self.__socket = websockets.sync.client.connect(url)
@@ -132,21 +147,19 @@ class WebsocketCollabClient:
 
     def __listener(self)-> None:
         while not self.__should_close_thread:
-            msg: str
+            received: str
             try:
-                msg = str(self.__socket.recv())
+                received = str(self.__socket.recv())
             except:
                 return
 
             obj: dict
             try:
-                obj = json.loads(msg)
+                obj = json.loads(received)
             except:
-                self.__call_listeners(self.__listeners_non_proto_msg, msg)
                 return
             
             if not self.__is_well_formed_protocol_message(obj):
-                self.__call_listeners(self.__listeners_non_proto_msg, msg)
                 return
 
             proto_msg: ProtocolMessageUnknown = ProtocolMessageUnknown(
@@ -157,31 +170,25 @@ class WebsocketCollabClient:
                 payload=obj["payload"]
             )
 
-            self.__call_listeners(self.__listeners_all_msg, proto_msg)
+            if not self.__is_well_formed_payload(proto_msg.payload):
+                return
+            
+            msg: ProtocolMessage = proto_msg
 
-            if not ("all" in proto_msg.to or self.__user in proto_msg.to):
+            self.__call_listeners(self.__listeners_all_msg, msg)
+
+            if not ("all" in msg.to or self.__user in msg.to):
                 return
 
-            if proto_msg.sender == self.__user:
+            if msg.sender == self.__user:
                 return
 
-            match proto_msg.type:
+            match msg.type:
                 case "message":
-                    if not self.__is_well_formed_payload(proto_msg.payload):
-                        self.__call_listeners(self.__listeners_other_msg, proto_msg)
-                        return
-                    text_msg: ProtocolMessage = proto_msg
-                    self.__call_listeners(self.__listeners_text_msg, text_msg)
+                    self.__call_listeners(self.__listeners_text_msg, msg)
                     return
                 case "data":
-                    if not self.__is_well_formed_payload(proto_msg.payload):
-                        self.__call_listeners(self.__listeners_other_msg, proto_msg)
-                        return
-                    text_msg: ProtocolMessage = proto_msg
-                    self.__call_listeners(self.__listeners_data_msg, text_msg)
-                    return
-                case _:
-                    self.__call_listeners(self.__listeners_other_msg, proto_msg)
+                    self.__call_listeners(self.__listeners_data_msg, msg)
                     return
                 
     
@@ -191,6 +198,9 @@ class WebsocketCollabClient:
 
 
     def connect(self, url: str | urllib3.util.Url, channel_id: str, user: str, password: str):
+        """
+        Connects to the server and joins the selected channel.
+        """
         assert url != None
         assert channel_id != None
         assert user != None
@@ -218,8 +228,6 @@ class WebsocketCollabClient:
             reconstructed_uri += ":" + str(uri.port)
         reconstructed_uri += f"/{channel_id}"
 
-        print(reconstructed_uri)
-
         self.__user = user
         self.channel_id = channel_id
         self.server_url = reconstructed_uri
@@ -229,6 +237,9 @@ class WebsocketCollabClient:
     
 
     def disconnect(self)-> None:
+        """
+        Closes the connection to the server.
+        """
         self.__clear_server_data()
         if self.__socket == None: return
         self.__should_close_thread = True
@@ -236,7 +247,7 @@ class WebsocketCollabClient:
         self.__socket.close()
     
 
-    def send(self, msg_type: str, payload: dict, to: list[str] | None = None)-> None:
+    def __send(self, msg_type: str, payload: dict, to: list[str] | None = None)-> None:
         assert msg_type != None
         assert payload != None
 
@@ -260,47 +271,64 @@ class WebsocketCollabClient:
     
 
     def send_text(self, sender_name: str, content: str, to: list[str] | None = None)-> None:
-        self.send("message", {
+        """
+        Send a message to users of the channel, with the assumption that they
+        should respond to said message.
+        """
+        self.__send("message", {
             "name": sender_name,
             "content": content
         }, to)
 
 
     def send_data(self, data_name: str, data: str, to: list[str] | None = None)-> None:
-        self.send("data", {
+        """
+        Send data to other participants, with the assumption that they will not
+        respond to receiving the data.
+        """
+        self.__send("data", {
             "name": data_name,
             "content": data
         }, to)
     
 
-    def send_non_protocol_json(self, obj: dict)-> None:
-        assert type(obj).__name__ == "dict"
-        assert self.__socket != None
-        self.__socket.send(json.dumps(obj))
-    
+    def on_all_messages(self, listener: Callable[[ProtocolMessage], None])-> None:
+        """
+        Called when a protocol message is received from the server.
 
-    def on_all_messages(self, listener: Callable[[ProtocolMessageUnknown], None])-> None:
+        Is called before `on_text_message` and `on_data_message`, so they might
+        also get called for the exact same message.
+
+        Only use if you want to handle specific cases.
+
+        Use `on_text_message` instead if you are only interested with the text
+        messages.
+        """
         self.__listeners_all_msg.append(listener)
     
 
     def on_text_message(self, listener: Callable[[ProtocolMessage], None])-> None:
+        """
+        Called when a text message is received from the server.
+
+        The assumption is that you will respond to this message.
+        """
         self.__listeners_text_msg.append(listener)
     
 
     def on_data_message(self, listener: Callable[[ProtocolMessage], None])-> None:
+        """
+        Called when a data message is received from the server.
+
+        The assumption is that you will not respond to this message.
+        """
         self.__listeners_data_msg.append(listener)
-    
 
-    def on_other_message(self, listener: Callable[[ProtocolMessageUnknown], None])-> None:
-        self.__listeners_other_msg.append(listener)
-    
-
-    def on_non_protocol_message(self, listener: Callable[[str], None])-> None:
-        self.__listeners_non_proto_msg.append(listener)
 
     def remove_all_listeners(self)-> None:
+        """
+        Remove all listeners added via `on_#_message` functions.
+        """
         self.__listeners_all_msg.clear()
-        self.__listeners_non_proto_msg.clear()
-        self.__listeners_other_msg.clear()
         self.__listeners_text_msg.clear()
         self.__listeners_data_msg.clear()

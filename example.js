@@ -9,12 +9,8 @@ async function main() {
   let client = new WebsocketCollabClient();
   await client.connect(WS_URL, CHANNEL_ID, { user: USER, pass: PASS });
 
-  client.onAllMessages = (json) => {
+  client.onTextMessage = (sender, content, json) => {
     console.log("RAW:", json);
-  };
-
-  client.onTextMessage = (sender, content, raw) => {
-    console.log("RAW:", msg.to_dict());
     console.log(`From: '${sender}' Message: '${content}'`);
   };
 
