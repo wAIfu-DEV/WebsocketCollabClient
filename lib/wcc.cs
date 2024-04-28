@@ -259,8 +259,6 @@ namespace WebsocketCollab
                     continue;
                 }
 
-                Console.WriteLine("RECEIVED: " + received);
-
                 using (JsonDocument json = JsonDocument.Parse(received))
                 {
                     JsonElement root = json.RootElement;
