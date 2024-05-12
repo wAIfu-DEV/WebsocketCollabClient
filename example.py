@@ -1,3 +1,4 @@
+import asyncio
 from lib.wcc import WebsocketCollabClient, ProtocolMessage
 
 WS_URL = "<url>"

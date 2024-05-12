@@ -151,16 +151,16 @@ class WebsocketCollabClient:
             try:
                 received = str(self.__socket.recv())
             except:
-                return
+                continue
 
             obj: dict
             try:
                 obj = json.loads(received)
             except:
-                return
+                continue
             
             if not self.__is_well_formed_protocol_message(obj):
-                return
+                continue
 
             proto_msg: ProtocolMessageUnknown = ProtocolMessageUnknown(
                 version=obj["version"],
@@ -171,25 +171,28 @@ class WebsocketCollabClient:
             )
 
             if not self.__is_well_formed_payload(proto_msg.payload):
-                return
+                continue
             
+            payload = Payload(obj["payload"]["name"], obj["payload"]["content"])
+
             msg: ProtocolMessage = proto_msg
+            msg.payload = payload
 
             self.__call_listeners(self.__listeners_all_msg, msg)
 
             if not ("all" in msg.to or self.__user in msg.to):
-                return
+                continue
 
             if msg.sender == self.__user:
-                return
+                continue
 
             match msg.type:
                 case "message":
                     self.__call_listeners(self.__listeners_text_msg, msg)
-                    return
+                    continue
                 case "data":
                     self.__call_listeners(self.__listeners_data_msg, msg)
-                    return
+                    continue
                 
     
     def __start_listener_thread(self)-> None:
