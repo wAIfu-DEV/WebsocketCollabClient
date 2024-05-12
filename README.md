@@ -114,7 +114,7 @@ while (true) { };
   "to": ["all"] /* ["all"] | ["<user>", ...] */,
   "payload": {
     "name": "Hilda",
-    "data": "This is a test message."
+    "content": "This is a test message."
   }
 }
 ```
