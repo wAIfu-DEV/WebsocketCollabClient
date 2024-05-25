@@ -9,9 +9,15 @@ async function main() {
   let client = new WebsocketCollabClient();
   await client.connect(WS_URL, CHANNEL_ID, { user: USER, pass: PASS });
 
+  // Called when a message destined to you, and that you did not send is received by the client.
   client.onTextMessage = (sender, content, json) => {
     console.log("RAW:", json);
     console.log(`From: '${sender}' Message: '${content}'`);
+  };
+
+  // Called with every message, even those you sent or those that are not destined to you. Additional checks may be required.
+  client.onAllMessages = (json) => {
+    console.log("Received:", json);
   };
 
   client.sendText("Hilda", "This is a test message", ["all"]);

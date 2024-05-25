@@ -42,10 +42,21 @@ client.connect(
     password=PASS)
 
 def listener_text(msg: ProtocolMessage):
+    """
+    Called when a message you did not send is received by the client.
+    """
     print("RAW:", msg.to_dict())
     print(f"From: '{msg.payload.name}' Message: '{msg.payload.content}'")
 
+def listener_all(msg: ProtocolMessage):
+    """
+    Called with every message, even those you sent or those that are not destined
+    to you. Additional checks may be required.
+    """
+    print("Received:", msg.to_dict())
+
 client.on_text_message(listener_text)
+client.on_all_messages(listener_all)
 
 client.send_text("Hilda", "This is a test message", ["all"])
 ```
@@ -64,9 +75,15 @@ async function main() {
   let client = new WebsocketCollabClient();
   await client.connect(WS_URL, CHANNEL_ID, { user: USER, pass: PASS });
 
+  // Called when a message destined to you, and that you did not send is received by the client.
   client.onTextMessage = (sender, content, json) => {
     console.log("RAW:", json);
     console.log(`From: '${sender}' Message: '${content}'`);
+  };
+
+  // Called with every message, even those you sent or those that are not destined to you. Additional checks may be required.
+  client.onAllMessages = (json) => {
+    console.log("Received:", json);
   };
 
   client.sendText("Hilda", "This is a test message", ["all"]);
@@ -88,14 +105,19 @@ const string CHANNEL_ID = "<channel id>";
 WebsocketCollabClient wcc = new WebsocketCollabClient();
 await wcc.Connect(WS_URL, CHANNEL_ID, USER, PASS);
 
+// Called when a message destined to you, and that you did not send is received by the client.
 wcc.OnTextMessage += (s, msg) =>
 {
     Console.WriteLine($"From: '{msg.Payload.Name}' Message: '{msg.Payload.Content}'");
 };
 
-await wcc.SendText("Hilda", "This is a test message", ["all"]);
+// Called with every message, even those you sent or those that are not destined to you. Additional checks may be required.
+wcc.OnAllMessages += (s, msg) =>
+{
+    Console.WriteLine($"From: '{msg.Payload.Name}' Message: '{msg.Payload.Content}'");
+};
 
-while (true) { };
+await wcc.SendText("Hilda", "This is a test message", ["all"]);
 ```
 
 ## How to setup
@@ -118,3 +140,11 @@ while (true) { };
   }
 }
 ```
+
+- **version**: Version of protocol message.
+- **type**: Type of message, can be either "message" or "data". "message" indicates that the message is the LLM output of another ai vtuber. "data" indicates that the payload should be handled differently, depending on the name of the payload.
+- **from**: Collab username of the sender.
+- **to**: Array of collab usernames to send the message to. If contains "all", will send to all collab partners.
+- **payload**: The contents of the message.
+- **payload.name**: Depends on message type. For "message": `payload.name` is the name of the AI vtuber. For "data": `payload.name` is the label of the data.
+- **payload.content**: Depends on message type. For "message": `payload?content` is the output of the LLM in string format. For "data": Undefined, can either be plain string or stringified JSON.
