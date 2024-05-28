@@ -128,7 +128,7 @@ await wcc.SendText("Hilda", "This is a test message", ["all"]);
 
 ### Format of JSON messages
 
-```json
+```js
 {
   "version": 1,
   "type": "message" /* "message" | "data" */,
