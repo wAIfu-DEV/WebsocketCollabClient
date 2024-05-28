@@ -147,4 +147,4 @@ await wcc.SendText("Hilda", "This is a test message", ["all"]);
 - **to**: Array of collab usernames to send the message to. If contains "all", will send to all collab partners.
 - **payload**: The contents of the message.
 - **payload.name**: Depends on message type. For "message": `payload.name` is the name of the AI vtuber. For "data": `payload.name` is the label of the data.
-- **payload.content**: Depends on message type. For "message": `payload?content` is the output of the LLM in string format. For "data": Undefined, can either be plain string or stringified JSON.
+- **payload.content**: Depends on message type. For "message": `payload.content` is the output of the LLM in string format. For "data": Undefined, can either be plain string or stringified JSON.
