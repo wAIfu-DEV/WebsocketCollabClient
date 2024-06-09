@@ -1,4 +1,6 @@
-﻿using WebsocketCollab;
+﻿using System.Threading;
+
+using WebsocketCollab;
 
 const string WS_URL = "<url>";
 const string USER = "<user>";
@@ -20,6 +22,8 @@ wcc.OnAllMessages += (s, msg) =>
     Console.WriteLine($"From: '{msg.Payload.Name}' Message: '{msg.Payload.Content}'");
 };
 
-await wcc.SendText("Hilda", "This is a test message", ["all"]);
-
-while (true) { };
+while (true)
+{
+    Thread.Sleep(2000);
+    await wcc.SendText("Hilda", "This is a test message", ["all"]);
+};

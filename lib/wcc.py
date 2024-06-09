@@ -1,10 +1,13 @@
 import urllib3.util
 import json
+import sys
 import threading
+import time
 
 from typing import Any, Callable
 
 import websockets
+import websockets.exceptions
 import websockets.sync
 import websockets.sync.client
 
@@ -96,6 +99,9 @@ class WebsocketCollabClient:
     URL of the server the client is currently connected to.
     """
 
+    __retry_count: int = 0
+    MAX_RETRIES: int = 5
+
     __user: str = ""
     __socket: websockets.sync.client.ClientConnection | None = None
     __thread: threading.Thread | None = None
@@ -104,6 +110,14 @@ class WebsocketCollabClient:
     __listeners_all_msg: list[Callable[[ProtocolMessage], None]] = []
     __listeners_text_msg: list[Callable[[ProtocolMessage], None]] = []
     __listeners_data_msg: list[Callable[[ProtocolMessage], None]] = []
+
+
+    def __wcc_log(*args):
+        print("WCC:", *args)
+    
+
+    def __wcc_err(*args):
+        print("WCC:", *args, file=sys.stderr)
 
 
     def __connect_websocket(self, url: str)-> None:
@@ -150,7 +164,11 @@ class WebsocketCollabClient:
             received: str
             try:
                 received = str(self.__socket.recv())
-            except:
+            except (websockets.exceptions.ConnectionClosedError, OSError):
+                self.connected = False
+                self.__reconnect()
+                continue
+            except Exception:
                 continue
 
             obj: dict
@@ -175,8 +193,13 @@ class WebsocketCollabClient:
             
             payload = Payload(obj["payload"]["name"], obj["payload"]["content"])
 
-            msg: ProtocolMessage = proto_msg
-            msg.payload = payload
+            msg: ProtocolMessage = ProtocolMessage(
+                version=proto_msg.version,
+                type=proto_msg.type,
+                sender=proto_msg.sender,
+                to=proto_msg.to,
+                payload=payload
+            )
 
             self.__call_listeners(self.__listeners_all_msg, msg)
 
@@ -198,6 +221,30 @@ class WebsocketCollabClient:
     def __start_listener_thread(self)-> None:
         self.__thread = threading.Thread(target=self.__listener, args=[])
         self.__thread.start()
+    
+
+    def __reconnect(self) -> None:
+        if self.__retry_count >= self.MAX_RETRIES:
+            self.__wcc_err("Max retries reached. Could not reconnect to the Websocket Collab server.")
+            self.__clear_server_data()
+            return
+
+        delay_sec = 2 ** self.__retry_count
+        self.__retry_count += 1
+        self.__wcc_log(f"Reconnecting in {delay_sec} seconds...")
+
+        time.sleep(delay_sec)
+
+        try:
+            self.__connect_websocket(self.server_url)
+            self.__retry_count = 0
+            self.__wcc_log("Reconnected successfully.")
+        except websockets.exceptions.InvalidURI:
+            self.__wcc_err("Invalid URI for reconnection attempt.")
+            self.__clear_server_data()
+        except Exception as err:
+            self.__wcc_err(f"Reconnection attempt failed: {err}")
+            self.__reconnect()
 
 
     def connect(self, url: str | urllib3.util.Url, channel_id: str, user: str, password: str):
@@ -270,7 +317,10 @@ class WebsocketCollabClient:
             "payload": payload,
         }
 
-        self.__socket.send(json.dumps(obj))
+        try:
+            self.__socket.send(json.dumps(obj))
+        except:
+            self.__wcc_err("Failed to send message to Websocket Collab server.")
     
 
     def send_text(self, sender_name: str, content: str, to: list[str] | None = None)-> None:

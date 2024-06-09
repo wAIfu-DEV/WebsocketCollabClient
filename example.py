@@ -1,3 +1,4 @@
+import time
 from lib.wcc import WebsocketCollabClient, ProtocolMessage
 
 WS_URL = "<url>"
@@ -30,4 +31,6 @@ def listener_all(msg: ProtocolMessage):
 client.on_text_message(listener_text)
 client.on_all_messages(listener_all)
 
-client.send_text("Hilda", "This is a test message", ["all"])
+while True:
+    time.sleep(2)
+    client.send_text("Hilda", "This is a test message", ["all"])

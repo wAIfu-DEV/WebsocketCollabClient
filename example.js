@@ -20,7 +20,10 @@ async function main() {
     console.log("Received:", json);
   };
 
-  client.sendText("Hilda", "This is a test message", ["all"]);
+  while (true) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    client.sendText("Hilda", "This is a test message", ["all"]);
+  }
 }
 
 main();

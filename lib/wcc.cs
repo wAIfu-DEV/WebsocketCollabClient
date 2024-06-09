@@ -70,13 +70,21 @@ namespace WebsocketCollab
         public Uri? ServerUrl = null;
 
         private string User = string.Empty;
+        private string Password = string.Empty;
         private ClientWebSocket? Socket = null;
         private bool ShouldExitWatcher = false;
         private Task? WatcherTask = null;
+        private int MAX_RETRIES = 5;
+        private int RetryCount = 0;
 
         public EventHandler<ProtocolMessage> OnAllMessages { get; set; }
         public EventHandler<ProtocolMessage> OnTextMessage { get; set; }
         public EventHandler<ProtocolMessage> OnDataMessage { get; set; }
+
+        private void WccLog(string arg)
+        {
+            Console.WriteLine("WCC: " + arg);
+        }
 
         private async Task ConnectWebsocket(Uri uri, string username, string password)
         {
@@ -90,7 +98,14 @@ namespace WebsocketCollab
         {
             byte[] bytes = Encoding.UTF8.GetBytes(payload);
             ArraySegment<byte> segment = new ArraySegment<byte>(bytes, 0, bytes.Length);
-            await socket.SendAsync(segment, WebSocketMessageType.Text, true, CancellationToken.None);
+            try
+            {
+                await socket.SendAsync(segment, WebSocketMessageType.Text, true, CancellationToken.None);
+            }
+            catch
+            {
+                WccLog("Failed to send message to Websocket Collab server.");
+            }
         }
 
         private async Task<string> ReceiveString(ClientWebSocket socket)
@@ -135,6 +150,8 @@ namespace WebsocketCollab
                 }
                 catch
                 {
+                    Connected = false;
+                    await Reconnect();
                     continue;
                 }
 
@@ -183,6 +200,7 @@ namespace WebsocketCollab
         public async Task Connect(string url, string channel_id, string user, string password)
         {
             User = user;
+            Password = password;
             ChannelId = channel_id;
             ServerUrl = CreateUri(url, channel_id, user, password); ;
 
@@ -202,6 +220,34 @@ namespace WebsocketCollab
             ShouldExitWatcher = true;
             if (Socket == null) return;
             await Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+        }
+
+        private async Task Reconnect()
+        {
+            if (RetryCount >= MAX_RETRIES)
+            {
+                WccLog("Max retries reached. Could not reconnect to the WebSocket server.");
+                ClearServerData();
+                return;
+            }
+
+            int delaySec = (int)Math.Pow(2, RetryCount);
+            WccLog($"Reconnecting in {delaySec} seconds...");
+            RetryCount++;
+
+            await Task.Delay(delaySec * 1000);
+
+            try
+            {
+                await ConnectWebsocket(ServerUrl, User, Password);
+                RetryCount = 0;
+                WccLog("Reconnected successfully.");
+            }
+            catch (Exception ex)
+            {
+                WccLog($"Reconnection attempt failed: {ex.Message}");
+                await Reconnect();
+            }
         }
 
         /// <summary>
