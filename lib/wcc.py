@@ -311,7 +311,7 @@ class WebsocketCollabClient:
 
         obj = {
             "version": 1,
-            "type": "message",
+            "type": msg_type,
             "from": self.__user,
             "to": to,
             "payload": payload,
